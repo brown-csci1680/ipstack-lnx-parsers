@@ -18,6 +18,17 @@ const (
 	RoutingTypeRIP    RoutingMode = 2
 )
 
+/*
+ * NOTE: These data structures only represent structure of a
+ * configuration file.  In your implementation, you will still need to
+ * build your own data structures that store relevant information
+ * about your links, interfaces, etc. at runtime.
+ *
+ * These structs only represent the things in the config file--you
+ * will probably only parse these at startup in order to set up your own
+ * data structures.
+ *
+ */
 type IPConfig struct {
 	Interfaces []InterfaceConfig
 	Neighbors  []NeighborConfig
