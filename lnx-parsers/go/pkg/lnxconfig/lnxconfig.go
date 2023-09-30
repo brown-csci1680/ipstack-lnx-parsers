@@ -1,4 +1,4 @@
-package lnxparser
+package lnxconfig
 
 import (
 	"bufio"
@@ -33,7 +33,7 @@ type IPConfig struct {
 	Interfaces []InterfaceConfig
 	Neighbors  []NeighborConfig
 
-	OriginatingPrefixes []netip.Prefix
+	OriginatingPrefixes []netip.Prefix // Unused in F23, ignore.
 
 	RoutingMode RoutingMode
 
@@ -58,6 +58,50 @@ type NeighborConfig struct {
 
 	InterfaceName string
 }
+
+// Static config for testing
+var LnxConfig = IPConfig{
+	Interfaces: []InterfaceConfig{
+		{
+			Name:           "if0",
+			AssignedIP:     netip.MustParseAddr("10.1.0.1"),
+			AssignedPrefix: netip.MustParsePrefix("10.1.0.1/24"),
+			UDPAddr:        netip.MustParseAddrPort("127.0.0.1:5000"),
+		},
+		{
+			Name:           "if1",
+			AssignedIP:     netip.MustParseAddr("10.10.1.1"),
+			AssignedPrefix: netip.MustParsePrefix("10.10.1.1/24"),
+			UDPAddr:        netip.MustParseAddrPort("127.0.0.1:5001"),
+		},
+	},
+
+	Neighbors: []NeighborConfig{
+		{
+			DestAddr:      netip.MustParseAddr("10.1.0.10"),
+			UDPAddr:       netip.MustParseAddrPort("127.0.0.1:6001"),
+			InterfaceName: "if0",
+		},
+		{
+			DestAddr:      netip.MustParseAddr("10.10.1.2"),
+			UDPAddr:       netip.MustParseAddrPort("127.0.0.1:5100"),
+			InterfaceName: "if1",
+		},
+	},
+
+	OriginatingPrefixes: []netip.Prefix{
+		netip.MustParsePrefix("10.1.0.1/24"),
+	},
+
+	RoutingMode: RoutingTypeStatic,
+
+	RipNeighbors: []netip.Addr{
+		netip.MustParseAddr("10.10.1.2"),
+	},
+}
+
+// ******************** END PUBLIC INTERFACE *********************************************
+// (You shouldn't need to worry about what's below, unless you want to modify the parser.)
 
 type ParseFunc func(int, string, *IPConfig) error
 
@@ -273,6 +317,8 @@ func newErr(line int, err error) error {
 	return errors.New(fmt.Sprintf("Parse error on line %d:  %s", line, err.Error()))
 
 }
+
+// Parse a configuration file
 func ParseConfig(configFile string) (*IPConfig, error) {
 	fd, err := os.Open(configFile)
 	if err != nil {
@@ -318,45 +364,4 @@ func ParseConfig(configFile string) (*IPConfig, error) {
 	}
 
 	return config, nil
-}
-
-// Static config for testing
-var LnxConfig = IPConfig{
-	Interfaces: []InterfaceConfig{
-		{
-			Name:           "if0",
-			AssignedIP:     netip.MustParseAddr("10.1.0.1"),
-			AssignedPrefix: netip.MustParsePrefix("10.1.0.1/24"),
-			UDPAddr:        netip.MustParseAddrPort("127.0.0.1:5000"),
-		},
-		{
-			Name:           "if1",
-			AssignedIP:     netip.MustParseAddr("10.10.1.1"),
-			AssignedPrefix: netip.MustParsePrefix("10.10.1.1/24"),
-			UDPAddr:        netip.MustParseAddrPort("127.0.0.1:5001"),
-		},
-	},
-
-	Neighbors: []NeighborConfig{
-		{
-			DestAddr:      netip.MustParseAddr("10.1.0.10"),
-			UDPAddr:       netip.MustParseAddrPort("127.0.0.1:6001"),
-			InterfaceName: "if0",
-		},
-		{
-			DestAddr:      netip.MustParseAddr("10.10.1.2"),
-			UDPAddr:       netip.MustParseAddrPort("127.0.0.1:5100"),
-			InterfaceName: "if1",
-		},
-	},
-
-	OriginatingPrefixes: []netip.Prefix{
-		netip.MustParsePrefix("10.1.0.1/24"),
-	},
-
-	RoutingMode: RoutingTypeStatic,
-
-	RipNeighbors: []netip.Addr{
-		netip.MustParseAddr("10.10.1.2"),
-	},
 }
