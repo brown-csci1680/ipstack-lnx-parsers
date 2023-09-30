@@ -35,7 +35,7 @@ struct IPConfig {
     pub interfaces: Vec<InterfaceConfig>,
     pub neighbors: Vec<NeighborConfig>,
 
-    pub originating_prefixes: Vec<Ipv4Net>,
+    pub originating_prefixes: Vec<Ipv4Net>, // Unused in F23, ignore
 
     pub routing_mode: RoutingType,
 
