@@ -3,15 +3,15 @@ CFLAGS=-Wall -g
 SRC=$(wildcard *.c)
 OBJS=$(SRC:.c=.o)
 
-all: example
+all: demo
 
 objs: $(SRC)
 	$(CC) $(CFLAGS) -c $^
 
 
-example: $(OBJS)
-	$(CC) $(CFLAGS) -o example $^
+demo: $(OBJS)
+	$(CC) $(CFLAGS) -o demo $^
 
 
 clean:
-	rm -fv example *.o
+	rm -fv demo *.o
