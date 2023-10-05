@@ -7,6 +7,19 @@ The most important files are:
  - `demo.c` Example on how to use the parser and traverse the config
    struct
    
+To use the parser in your program, copy `lnxconfig.c` and
+`lnxconfig.h` into your program wherever you store library code.  See
+the `Makefile` for examples on how to build your code from multiple
+object files.  
+
+**IMPORTANT NOTE**: This parser uses the `list.h` linked-list
+implementation provided in the
+[c-utils](https://github.com/brown-csci1680/c-utils) repo.  If you are
+using different list.h, you may need to rename the list.h here to
+avoid conflicts.
+   
+## Example program
+   
 To build the example, run `make`, then run the binary `demo` on any
 lnx file, as follows:
 
