@@ -1,9 +1,11 @@
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
 
-#include "dbg.h"
 #include "list.h"
 #include "lnxconfig.h"
 
@@ -15,41 +17,11 @@
 
 int g_current_line = 0;
 
-void derror(char *msg) {
-    dbg(DBG_ERROR, "lnxconfig_parse, line %d:  %s:  %s\n",
-	g_current_line, msg, strerror(errno));
-}
-
-void do_abort(char *msg) {
-    char buf[LINE_MAX];
-    snprintf(buf, LINE_MAX, "Line %d:  %s", g_current_line, msg);
-    perror(buf);
-    exit(1);
-}
-
-void do_parse_error(char *msg) {
-    printf("Parse error, line %d:  %s\n", g_current_line, msg);
-    exit(1);
-}
+void do_abort(char *msg);
+void do_parse_error(char *msg);
+void parse_addr(char *ip_str, struct in_addr *addr);
 
 
-// Get an IP address as a 32-bit number from string
-uint32_t get_ip_addr(char *ip_str)
-{
-  struct in_addr addr;
-  memset(&addr, 0, sizeof(struct in_addr));
-
-  int rv;
-  if ((rv = inet_pton(AF_INET, ip_str, &addr)) < 0) {
-      do_abort("inet_pton");
-  }
-
-  // Now, we can get the address in 32-bit form from the sockaddr struct
-  // For details, see:  https://beej.us/guide/bgnet/html/#structsockaddrman
-  uint32_t addr_as_int = addr.s_addr;
-
-  return addr_as_int;
-}
 
 // Get a struct in_addr from a string
 void parse_addr(char *ip_str, struct in_addr *addr)
@@ -62,14 +34,7 @@ void parse_addr(char *ip_str, struct in_addr *addr)
   }
 }
 
-void add_to_interface(struct lnxconfig_t *config, struct lnx_interface_t *template) {
-    struct lnx_interface_t *new_item = (struct lnx_interface_t*)malloc(sizeof(struct lnx_interface_t));
-    memcpy(new_item, template, sizeof(struct lnx_interface_t));
-
-
-    list_insert_tail(&config->interfaces, &new_item->link);
-}
-
+// Add a struct to one of the linked lists
 #define add_config(config_field, template, T)	\
     do { \
 	T *__item = (T *)malloc(sizeof(T));		  \
@@ -195,4 +160,18 @@ struct lnxconfig_t *lnxconfig_parse(char *config_file) {
 
 
 void lnxconfig_destroy(struct lnxconfig_t *config) {
+
+}
+
+
+void do_abort(char *msg) {
+    char buf[LINE_MAX];
+    snprintf(buf, LINE_MAX, "Line %d:  %s", g_current_line, msg);
+    perror(buf);
+    exit(1);
+}
+
+void do_parse_error(char *msg) {
+    printf("Parse error, line %d:  %s\n", g_current_line, msg);
+    exit(1);
 }
