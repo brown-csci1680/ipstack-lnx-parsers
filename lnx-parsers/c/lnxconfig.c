@@ -1,0 +1,198 @@
+#include <errno.h>
+#include <string.h>
+#include <inttypes.h>
+#include <arpa/inet.h>
+
+#include "dbg.h"
+#include "list.h"
+#include "lnxconfig.h"
+
+#define TOKEN_MAX_INTERFACE 5
+#define TOKEN_MAX_NEIGHBOR 4
+#define TOKEN_MAX_RIP_NEIGHBOR 1
+#define TOKEN_MAX_ROUTE 3
+#define TOKEN_MAX_NAME 16
+
+int g_current_line = 0;
+
+void derror(char *msg) {
+    dbg(DBG_ERROR, "lnxconfig_parse, line %d:  %s:  %s\n",
+	g_current_line, msg, strerror(errno));
+}
+
+void do_abort(char *msg) {
+    char buf[LINE_MAX];
+    snprintf(buf, LINE_MAX, "Line %d:  %s", g_current_line, msg);
+    perror(buf);
+    exit(1);
+}
+
+void do_parse_error(char *msg) {
+    printf("Parse error, line %d:  %s\n", g_current_line, msg);
+    exit(1);
+}
+
+
+// Get an IP address as a 32-bit number from string
+uint32_t get_ip_addr(char *ip_str)
+{
+  struct in_addr addr;
+  memset(&addr, 0, sizeof(struct in_addr));
+
+  int rv;
+  if ((rv = inet_pton(AF_INET, ip_str, &addr)) < 0) {
+      do_abort("inet_pton");
+  }
+
+  // Now, we can get the address in 32-bit form from the sockaddr struct
+  // For details, see:  https://beej.us/guide/bgnet/html/#structsockaddrman
+  uint32_t addr_as_int = addr.s_addr;
+
+  return addr_as_int;
+}
+
+// Get a struct in_addr from a string
+void parse_addr(char *ip_str, struct in_addr *addr)
+{
+  memset(addr, 0, sizeof(struct in_addr));
+
+  int rv;
+  if ((rv = inet_pton(AF_INET, ip_str, addr)) < 0) {
+      do_abort("inet_pton");
+  }
+}
+
+void add_to_interface(struct lnxconfig_t *config, struct lnx_interface_t *template) {
+    struct lnx_interface_t *new_item = (struct lnx_interface_t*)malloc(sizeof(struct lnx_interface_t));
+    memcpy(new_item, template, sizeof(struct lnx_interface_t));
+
+
+    list_insert_tail(&config->interfaces, &new_item->link);
+}
+
+#define add_config(config_field, template, T)	\
+    do { \
+	T *__item = (T *)malloc(sizeof(T));		  \
+	memcpy(__item, template, sizeof(T));		  \
+	list_insert_tail((config_field), &__item->link);  \
+    } while(0)
+
+
+struct lnxconfig_t *lnxconfig_parse(char *config_file) {
+    FILE *f;
+    struct lnxconfig_t *config;
+
+    char buf[LINE_MAX];
+    char *line;
+    int tokens;
+
+    int port;
+    char ip_buf1[LINE_MAX];
+    char ip_buf2[LINE_MAX];
+    char first_token[TOKEN_MAX_NAME];
+
+    if ((f = fopen(config_file, "r")) == NULL) {
+	perror("fopen");
+	exit(1);
+    }
+
+    config = (struct lnxconfig_t *)malloc(sizeof(struct lnxconfig_t));
+    memset(config, 0, sizeof(struct lnxconfig_t));
+    list_init(&config->interfaces);
+    list_init(&config->neighbors);
+    list_init(&config->rip_neighbors);
+    list_init(&config->static_routes);
+    config->routing_mode = ROUTING_MODE_STATIC; // Set as default unless otherwise specified
+
+    // Template structs for storage when scanning
+    // After parsing each line, copy these into config struct
+    struct lnx_interface_t f_iface;
+    struct lnx_neighbor_t  f_neighbor;
+    struct lnx_rip_neighbor_t f_advertise_to;
+    lnx_static_route_t f_route;
+
+    while ((line = fgets(buf, LINE_MAX, f)) != NULL) {
+	memset(&f_iface, 0, sizeof(struct lnx_interface_t));
+	memset(&f_neighbor, 0, sizeof(struct lnx_neighbor_t));
+	memset(&f_advertise_to, 0, sizeof(struct lnx_rip_neighbor_t));
+	memset(&f_route, 0, sizeof(lnx_static_route_t));
+	memset(ip_buf1, 0, LINE_MAX);
+	memset(ip_buf2, 0, LINE_MAX);
+	memset(first_token, 0, TOKEN_MAX_NAME);
+
+	g_current_line++;
+
+	if (line[0] == '#') {
+	    continue;
+	}
+
+	if ((tokens = sscanf(line, "%10s", first_token)) != 1) {
+	    continue;
+	}
+
+	if ((strncmp(first_token, "interface", TOKEN_MAX_NAME)) == 0) {
+	    tokens = sscanf(line, "interface %32s %32[^/]/%2d %32[^:]:%d",
+			    f_iface.name, ip_buf1, &f_iface.prefix_len, ip_buf2, &port);
+	    if (tokens != TOKEN_MAX_INTERFACE) {
+		do_parse_error("Did not find enough tokens");
+	    }
+
+	    parse_addr(ip_buf1, &f_iface.assigned_ip);
+	    parse_addr(ip_buf2, &f_iface.udp_addr);
+	    f_iface.udp_port = (uint16_t)port;
+
+	    add_config(&config->interfaces, &f_iface, struct lnx_interface_t);
+	} else if ((strncmp(first_token, "neighbor", TOKEN_MAX_NAME)) == 0) {
+	    tokens = sscanf(line, "neighbor %32s at %32[^:]:%d via %32[^ #]",
+			    ip_buf1, ip_buf2, &port, f_neighbor.ifname);
+	    if (tokens != TOKEN_MAX_NEIGHBOR) {
+		do_parse_error("Did not find enough tokens");
+	    }
+
+	    parse_addr(ip_buf1, &f_neighbor.dest_addr);
+	    parse_addr(ip_buf2, &f_neighbor.udp_addr);
+	    f_neighbor.udp_port = (uint16_t)port;
+	    add_config(&config->neighbors, &f_neighbor, struct lnx_neighbor_t);
+	} else if ((strncmp(first_token, "routing", TOKEN_MAX_NAME) == 0)) {
+	    char *mode_str = ip_buf1; // Reuse this buffer
+	    tokens = sscanf(line, "routing %32s", mode_str);
+	    if (tokens != 1) {
+		do_parse_error("Did not find enough tokens");
+	    }
+
+	    if (strncmp(mode_str, "rip", TOKEN_MAX_NAME) == 0) {
+		config->routing_mode = ROUTING_MODE_RIP;
+	    } else if (strncmp(mode_str, "static", TOKEN_MAX_NAME) == 0) {
+		config->routing_mode = ROUTING_MODE_STATIC;
+	    } else {
+		do_parse_error("Unrecognized routing mode");
+	    }
+	} else if (strncmp(first_token, "rip", TOKEN_MAX_NAME) == 0) {
+	    tokens = sscanf(line, "rip advertise-to %32s", ip_buf1);
+	    if (tokens != TOKEN_MAX_RIP_NEIGHBOR) {
+		do_parse_error("Did not find enough tokens");
+	    }
+	    parse_addr(ip_buf1, &f_advertise_to.dest);
+	    add_config(&config->rip_neighbors, &f_advertise_to, struct lnx_rip_neighbor_t);
+	} else if (strncmp(first_token, "route", TOKEN_MAX_NAME) == 0) {
+	    tokens = sscanf(line, "route %32[^/]/%2d via %32s",
+			    ip_buf1, &f_route.prefix_len, ip_buf2);
+	    if (tokens != TOKEN_MAX_ROUTE) {
+		do_parse_error("Did not find enough tokens");
+	    }
+
+	    parse_addr(ip_buf1, &f_route.network_addr);
+	    parse_addr(ip_buf2, &f_route.next_hop);
+	    add_config(&config->static_routes, &f_route, lnx_static_route_t);
+	}
+
+    }
+
+    fclose(f);
+    return config;
+}
+
+
+
+void lnxconfig_destroy(struct lnxconfig_t *config) {
+}
