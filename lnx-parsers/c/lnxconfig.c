@@ -71,15 +71,15 @@ struct lnxconfig_t *lnxconfig_parse(char *config_file) {
 
     // Template structs for storage when scanning
     // After parsing each line, copy these into config struct
-    struct lnx_interface_t f_iface;
-    struct lnx_neighbor_t  f_neighbor;
-    struct lnx_rip_neighbor_t f_advertise_to;
+    lnx_interface_t f_iface;
+    lnx_neighbor_t  f_neighbor;
+    lnx_rip_neighbor_t f_advertise_to;
     lnx_static_route_t f_route;
 
     while ((line = fgets(buf, LINE_MAX, f)) != NULL) {
-	memset(&f_iface, 0, sizeof(struct lnx_interface_t));
-	memset(&f_neighbor, 0, sizeof(struct lnx_neighbor_t));
-	memset(&f_advertise_to, 0, sizeof(struct lnx_rip_neighbor_t));
+	memset(&f_iface, 0, sizeof(lnx_interface_t));
+	memset(&f_neighbor, 0, sizeof(lnx_neighbor_t));
+	memset(&f_advertise_to, 0, sizeof(lnx_rip_neighbor_t));
 	memset(&f_route, 0, sizeof(lnx_static_route_t));
 	memset(ip_buf1, 0, LINE_MAX);
 	memset(ip_buf2, 0, LINE_MAX);
@@ -106,7 +106,7 @@ struct lnxconfig_t *lnxconfig_parse(char *config_file) {
 	    parse_addr(ip_buf2, &f_iface.udp_addr);
 	    f_iface.udp_port = (uint16_t)port;
 
-	    add_config(&config->interfaces, &f_iface, struct lnx_interface_t);
+	    add_config(&config->interfaces, &f_iface, lnx_interface_t);
 	} else if ((strncmp(first_token, "neighbor", TOKEN_MAX_NAME)) == 0) {
 	    tokens = sscanf(line, "neighbor %32s at %32[^:]:%d via %32[^ #]",
 			    ip_buf1, ip_buf2, &port, f_neighbor.ifname);
@@ -117,7 +117,7 @@ struct lnxconfig_t *lnxconfig_parse(char *config_file) {
 	    parse_addr(ip_buf1, &f_neighbor.dest_addr);
 	    parse_addr(ip_buf2, &f_neighbor.udp_addr);
 	    f_neighbor.udp_port = (uint16_t)port;
-	    add_config(&config->neighbors, &f_neighbor, struct lnx_neighbor_t);
+	    add_config(&config->neighbors, &f_neighbor, lnx_neighbor_t);
 	} else if ((strncmp(first_token, "routing", TOKEN_MAX_NAME) == 0)) {
 	    char *mode_str = ip_buf1; // Reuse this buffer
 	    tokens = sscanf(line, "routing %32s", mode_str);
@@ -138,7 +138,7 @@ struct lnxconfig_t *lnxconfig_parse(char *config_file) {
 		do_parse_error("Did not find enough tokens");
 	    }
 	    parse_addr(ip_buf1, &f_advertise_to.dest);
-	    add_config(&config->rip_neighbors, &f_advertise_to, struct lnx_rip_neighbor_t);
+	    add_config(&config->rip_neighbors, &f_advertise_to, lnx_rip_neighbor_t);
 	} else if (strncmp(first_token, "route", TOKEN_MAX_NAME) == 0) {
 	    tokens = sscanf(line, "route %32[^/]/%2d via %32s",
 			    ip_buf1, &f_route.prefix_len, ip_buf2);

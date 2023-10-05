@@ -8,7 +8,7 @@
 #include "list.h"
 
 
-void print_interface(struct lnx_interface_t *iface) {
+void print_interface(lnx_interface_t *iface) {
     char assigned_ip[INET_ADDRSTRLEN];
     char udp_ip[INET_ADDRSTRLEN];
 
@@ -23,7 +23,7 @@ void print_interface(struct lnx_interface_t *iface) {
 	   iface->udp_port);
 }
 
-void print_neighbor(struct lnx_neighbor_t *neigh) {
+void print_neighbor(lnx_neighbor_t *neigh) {
     char dest_addr[INET_ADDRSTRLEN];
     char udp_addr[INET_ADDRSTRLEN];
 
@@ -36,7 +36,7 @@ void print_neighbor(struct lnx_neighbor_t *neigh) {
 	   neigh->udp_port, neigh->ifname);
 }
 
-void print_rip_neighbor(struct lnx_rip_neighbor_t *rip_neigh) {
+void print_rip_neighbor(lnx_rip_neighbor_t *rip_neigh) {
     char addr[INET_ADDRSTRLEN];
 
     inet_ntop(AF_INET, &rip_neigh->dest, addr, INET_ADDRSTRLEN);
@@ -75,13 +75,13 @@ int main(int argc, char **argv) {
 #if 1
     struct lnxconfig_t *config = lnxconfig_parse(argv[1]);
 
-    struct lnx_interface_t *iface;
-    list_iterate_begin(&config->interfaces, iface, struct lnx_interface_t, link) {
+    lnx_interface_t *iface;
+    list_iterate_begin(&config->interfaces, iface, lnx_interface_t, link) {
 	print_interface(iface);
     } list_iterate_end();
 
-    struct lnx_neighbor_t *neighbor;
-    list_iterate_begin(&config->neighbors, neighbor, struct lnx_neighbor_t, link) {
+    lnx_neighbor_t *neighbor;
+    list_iterate_begin(&config->neighbors, neighbor, lnx_neighbor_t, link) {
 	print_neighbor(neighbor);
     } list_iterate_end();
 
@@ -96,8 +96,8 @@ int main(int argc, char **argv) {
 	print_static_route(route);
     } list_iterate_end();
 
-    struct lnx_rip_neighbor_t *rip_neighbor;
-    list_iterate_begin(&config->rip_neighbors, rip_neighbor, struct lnx_rip_neighbor_t, link) {
+    lnx_rip_neighbor_t *rip_neighbor;
+    list_iterate_begin(&config->rip_neighbors, rip_neighbor, lnx_rip_neighbor_t, link) {
 	print_rip_neighbor(rip_neighbor);
     } list_iterate_end();
 

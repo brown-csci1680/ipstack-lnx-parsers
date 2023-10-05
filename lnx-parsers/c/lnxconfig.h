@@ -15,7 +15,7 @@ typedef enum {
     ROUTING_MODE_RIP    = 2,   // Use RIP (default for routers)
 } routing_mode_t;
 
-struct lnx_interface_t {
+typedef struct {
     char name[LNX_IFNAME_MAX];
 
     struct in_addr assigned_ip;
@@ -26,10 +26,10 @@ struct lnx_interface_t {
     uint16_t udp_port;
 
     list_link_t link;
-};
+} lnx_interface_t;
 
 
-struct lnx_neighbor_t {
+typedef struct {
     struct in_addr dest_addr;
 
     struct in_addr udp_addr;
@@ -38,13 +38,13 @@ struct lnx_neighbor_t {
     char ifname[LNX_IFNAME_MAX];
 
     list_link_t link;
-};
+} lnx_neighbor_t;
 
-struct lnx_rip_neighbor_t {
+typedef struct {
     struct in_addr dest;
 
     list_link_t link;
-};
+} lnx_rip_neighbor_t;
 
 typedef struct {
     struct in_addr network_addr;
@@ -57,13 +57,10 @@ typedef struct {
 
 
 struct lnxconfig_t {
-    list_t interfaces; // list of type struct lnx_interface_t
-    list_t neighbors; // list of type struct lnx_neighbor_t
-    list_t rip_neighbors;  // list of type struct lnx_advertise_neighbor_t
+    list_t interfaces;    // list of type lnx_interface_t
+    list_t neighbors;     // list of type lnx_neighbor_t
+    list_t rip_neighbors; // list of type lnx_advertise_neighbor_t
     list_t static_routes; // list of type lnx_static_route_t
-    // struct lnx_interface_t *interfaces;
-    // struct lnx_neighbor_t *neighbors;
-    // struct lnx_advertise_neighbor_t *rip_neighbors;
 
     routing_mode_t routing_mode;
 };
