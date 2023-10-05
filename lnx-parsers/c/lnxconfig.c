@@ -1,3 +1,13 @@
+/*
+ * lnxconfig.c - C lnx parser
+ *
+ * This file constains the public API and structs representing an lnx
+ * file.  For an overview of how to use this parser, see demo.c.
+ *
+ * NOTE: This parser uses the "list.h" linked-list implementation
+ * provided in the c-utils repo.  If you are using different list.h,
+ * you may need to rename the list.h here to avoid conflicts.
+ */
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,8 +31,6 @@ void do_abort(char *msg);
 void do_parse_error(char *msg);
 void parse_addr(char *ip_str, struct in_addr *addr);
 
-
-
 // Get a struct in_addr from a string
 void parse_addr(char *ip_str, struct in_addr *addr)
 {
@@ -42,10 +50,20 @@ void parse_addr(char *ip_str, struct in_addr *addr)
 	list_insert_tail((config_field), &__item->link);  \
     } while(0)
 
+// Free all ements in one of the lists
+#define config_clear(config_field, T) \
+    do { \
+	while(!list_empty((config_field))) {		\
+	    T *__node = list_tail((config_field), T, link);	\
+	    list_remove_tail((config_field));			\
+	    free(__node);					\
+	}							\
+    } while(0)
 
-struct lnxconfig_t *lnxconfig_parse(char *config_file) {
+
+lnxconfig_t *lnxconfig_parse(char *config_file) {
     FILE *f;
-    struct lnxconfig_t *config;
+    lnxconfig_t *config;
 
     char buf[LINE_MAX];
     char *line;
@@ -61,8 +79,8 @@ struct lnxconfig_t *lnxconfig_parse(char *config_file) {
 	exit(1);
     }
 
-    config = (struct lnxconfig_t *)malloc(sizeof(struct lnxconfig_t));
-    memset(config, 0, sizeof(struct lnxconfig_t));
+    config = (lnxconfig_t *)malloc(sizeof(lnxconfig_t));
+    memset(config, 0, sizeof(lnxconfig_t));
     list_init(&config->interfaces);
     list_init(&config->neighbors);
     list_init(&config->rip_neighbors);
@@ -158,9 +176,17 @@ struct lnxconfig_t *lnxconfig_parse(char *config_file) {
 }
 
 
+void lnxconfig_destroy(lnxconfig_t *config) {
+    if (config == NULL) {
+	return;
+    }
 
-void lnxconfig_destroy(struct lnxconfig_t *config) {
+    config_clear(&config->interfaces, lnx_interface_t);
+    config_clear(&config->neighbors, lnx_neighbor_t);
+    config_clear(&config->rip_neighbors, lnx_rip_neighbor_t);
+    config_clear(&config->static_routes, lnx_static_route_t);
 
+    free(config);
 }
 
 
