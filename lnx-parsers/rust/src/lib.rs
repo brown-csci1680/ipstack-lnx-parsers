@@ -240,8 +240,7 @@ impl IPConfig {
             "rip" => self.parse_rip(&tokens)?,
             _ => {
                 return Err(ParserError::Other(format!(
-                    "Invalid command: {}",
-                    tokens[0]
+                    "Invalid directive: {directive}",
                 )))
             }
         }
