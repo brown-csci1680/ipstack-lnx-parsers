@@ -25,4 +25,6 @@ func main() {
 		prefixForm := netip.PrefixFrom(iface.AssignedIP, iface.AssignedPrefix.Bits())
 		fmt.Printf("%s has IP %s\n", iface.Name, prefixForm.String())
 	}
+
+	fmt.Printf("%+v", lnxConfig)
 }

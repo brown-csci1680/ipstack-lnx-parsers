@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -42,6 +43,14 @@ type IPConfig struct {
 
 	// Manually-added routes ("route" directive, usually just for default on hosts)
 	StaticRoutes map[netip.Prefix]netip.Addr
+
+	// ROUTERS ONLY:  Timing parameters for RIP updates (in milliseconds)
+	RipPeriodicUpdateRate uint
+	RipTimeoutThreshold   uint
+
+	// HOSTS ONLY:  Timing parameters for TCP (in milliseconds)
+	TcpRtoMin uint
+	TcpRtoMax uint
 }
 
 type InterfaceConfig struct {
@@ -111,6 +120,7 @@ var parseCommands = map[string]ParseFunc{
 	"routing":   parseRouting,
 	"route":     parseRoute,
 	"rip":       parseRip,
+	"tcp":       parseTcp,
 }
 
 func parseRip(ln int, line string, config *IPConfig) error {
@@ -150,6 +160,24 @@ func parseRip(ln int, line string, config *IPConfig) error {
 		if err != nil {
 			return err
 		}
+	case "periodic-update-rate":
+		if len(ripTokens) < 1 {
+			return newErrString(ln, "Usage:  rip periodic-update-rate <milliseconds>")
+		}
+		val, err := strconv.ParseInt(ripTokens[0], 10, 64)
+		if err != nil {
+			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
+		}
+		config.RipPeriodicUpdateRate = uint(val)
+	case "route-timeout-threshold":
+		if len(ripTokens) < 1 {
+			return newErrString(ln, "Usage:  rip route-timeout-threshold <milliseconds>")
+		}
+		val, err := strconv.ParseInt(ripTokens[0], 10, 64)
+		if err != nil {
+			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
+		}
+		config.RipTimeoutThreshold = uint(val)
 	default:
 		return newErrString(ln, "Unrecognized RIP command %s", cmd)
 	}
@@ -177,6 +205,41 @@ func addRipNeighbor(config *IPConfig, neighbor netip.Addr) error {
 	}
 
 	return errors.Errorf("RIP neighbor %s is not a neighbor IP", neighbor.String())
+}
+
+func parseTcp(ln int, line string, config *IPConfig) error {
+	tokens := strings.Split(line, " ")
+
+	if len(tokens) < 2 {
+		return newErrString(ln, "Usage:  tcp [cmd] ...")
+	}
+	cmd := tokens[1]
+	argTokens := tokens[2:]
+
+	switch cmd {
+	case "rto-min":
+		if len(argTokens) < 1 {
+			return newErrString(ln, "Usage:  tcp rto-min <milliseconds>")
+		}
+		val, err := strconv.ParseInt(argTokens[0], 10, 64)
+		if err != nil {
+			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
+		}
+		config.TcpRtoMin = uint(val)
+	case "rto-max":
+		if len(argTokens) < 1 {
+			return newErrString(ln, "Usage:  tcp rto-max <milliseconds>")
+		}
+		val, err := strconv.ParseInt(argTokens[0], 10, 64)
+		if err != nil {
+			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
+		}
+		config.TcpRtoMax = uint(val)
+	default:
+		return newErrString(ln, "Unrecognized RIP command %s", cmd)
+	}
+
+	return nil
 }
 
 func parseRouting(ln int, line string, config *IPConfig) error {
