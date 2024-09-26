@@ -3,6 +3,7 @@ use ipnet::Ipv4Net;
 use std::{
     fmt, fs,
     net::{self, Ipv4Addr},
+    num,
 };
 
 // NOTE: These data structures only represent structure of a
@@ -18,6 +19,7 @@ use std::{
 pub enum ParserError {
     Ipnet(ipnet::AddrParseError),
     Net(net::AddrParseError),
+    ParseIntError(num::ParseIntError),
     MissingToken(String),
     Other(String),
     BadFormat,
@@ -30,6 +32,7 @@ impl fmt::Display for ParserError {
         match self {
             ParserError::Ipnet(e) => write!(f, "IPNet error: {e}"),
             ParserError::Net(e) => write!(f, "Net error: {e}"),
+            ParserError::ParseIntError(e) => write!(f, "ParseInt error: {e}"),
             ParserError::MissingToken(token) => write!(f, "Missing token: {token}"),
             ParserError::Other(e) => write!(f, "Error: {e}"),
             ParserError::BadFormat => write!(f, "Bad format"),
@@ -47,6 +50,12 @@ impl From<ipnet::AddrParseError> for ParserError {
 impl From<net::AddrParseError> for ParserError {
     fn from(e: std::net::AddrParseError) -> Self {
         ParserError::Net(e)
+    }
+}
+
+impl From<num::ParseIntError> for ParserError {
+    fn from(e: num::ParseIntError) -> Self {
+        ParserError::ParseIntError(e)
     }
 }
 
@@ -164,10 +173,16 @@ pub struct IPConfig {
 
     pub routing_mode: RoutingType,
 
-    // ROUTERS only so making an option
-    pub rip_neighbors: Option<Vec<Ipv4Addr>>,
-
     pub static_routes: Vec<StaticRoute>, // prefix -> addr
+
+    // ROUTERS ONLY: Timing parameters for RIP updates (in milliseconds)
+    pub rip_neighbors: Option<Vec<Ipv4Addr>>,
+    pub rip_periodic_update_rate: Option<u64>,
+    pub rip_timeout_threshold: Option<u64>,
+
+    // HOSTS ONLY: Timing parmeters for TCP (in milliseconds)
+    pub tcp_rto_min: Option<u64>,
+    pub tcp_rto_max: Option<u64>,
 }
 
 impl IPConfig {
@@ -238,6 +253,7 @@ impl IPConfig {
             "routing" => self.parse_routing(&tokens)?,
             "route" => self.parse_route(&tokens)?,
             "rip" => self.parse_rip(&tokens)?,
+            "tcp" => self.parse_tcp(&tokens)?,
             _ => {
                 return Err(ParserError::Other(format!(
                     "Invalid directive: {directive}",
@@ -276,36 +292,67 @@ impl IPConfig {
     }
 
     /// Parse a RIP command
-    /// Format: rip advertise-to <addr>
+    /// Format: rip <command> <value>
     fn parse_rip(&mut self, tokens: &[&str]) -> Result<(), ParserError> {
-        // NOTE: originating-prefix (command == "originate") is unsupported as of F23
-        //       so we only need to handle command == "advertise-to"
         if tokens.len() != 3 {
             return Err(ParserError::BadFormat);
         }
 
         let command = tokens[1];
-        if command != "advertise-to" {
-            return Err(ParserError::Other(format!("Invalid command: {command}")));
-        }
 
-        let addr: Ipv4Addr = tokens[2].parse()?;
-        let matching_neighbor = self.neighbors.iter().find(|n| n.dest_addr == addr);
-
-        match matching_neighbor {
-            Some(neighbor) => {
-                if let Some(rip_neighbors) = &mut self.rip_neighbors {
-                    rip_neighbors.push(neighbor.dest_addr);
-                } else {
-                    // If rip_neighbors is None, create a new vec with the
-                    // neighbor's address
-                    self.rip_neighbors = Some(vec![neighbor.dest_addr]);
+        match command {
+            "advertise-to" => {
+                let addr: Ipv4Addr = tokens[2].parse()?;
+                let matching_neighbor = self.neighbors.iter().find(|n| n.dest_addr == addr);
+                match matching_neighbor {
+                    Some(neighbor) => {
+                        if let Some(rip_neighbors) = &mut self.rip_neighbors {
+                            rip_neighbors.push(neighbor.dest_addr);
+                        } else {
+                            // If rip_neighbors is None, create a new vec with the
+                            // neighbor's address
+                            self.rip_neighbors = Some(vec![neighbor.dest_addr]);
+                        }
+                    }
+                    None => {
+                        return Err(ParserError::Other(format!(
+                            "No neighbor with address {addr}"
+                        )))
+                    }
                 }
             }
-            None => {
+            "periodic-update-rate" => {
+                let rate: u64 = tokens[2].parse()?;
+                self.rip_periodic_update_rate = Some(rate);
+            }
+            "route-timeout-threshold" => {
+                let threshold: u64 = tokens[2].parse()?;
+                self.rip_timeout_threshold = Some(threshold);
+            }
+            _ => {
+                return Err(ParserError::Other(format!("Invalid command: {command}")));
+            }
+        }
+        Ok(())
+    }
+
+    /// Parse a TCP command
+    /// Format: tcp <property> <value>
+    fn parse_tcp(&mut self, tokens: &[&str]) -> Result<(), ParserError> {
+        if tokens.len() != 3 {
+            return Err(ParserError::BadFormat);
+        }
+
+        let property = tokens[1];
+        let value: u64 = tokens[2].parse()?;
+
+        match property {
+            "rto-min" => self.tcp_rto_min = Some(value),
+            "rto-max" => self.tcp_rto_max = Some(value),
+            _ => {
                 return Err(ParserError::Other(format!(
-                    "No neighbor with address {addr}"
-                )))
+                    "Invalid TCP property: {property}"
+                )));
             }
         }
         Ok(())
@@ -316,6 +363,40 @@ impl IPConfig {
 mod tests {
     use super::*;
     use std::net::Ipv4Addr;
+
+    #[test]
+    fn test_parse_new_fields() {
+        let config_str = "
+# Auto-generated configuration for r2
+
+interface if0 10.1.0.2/24 127.0.0.1:5003 # to network r1-r2
+neighbor 10.1.0.1 at 127.0.0.1:5002 via if0 # r1
+
+interface if1 10.2.0.1/24 127.0.0.1:5004 # to network r2-hosts
+neighbor 10.2.0.2 at 127.0.0.1:5005 via if1 # h2
+neighbor 10.2.0.3 at 127.0.0.1:5006 via if1 # h3
+
+
+routing rip
+
+# Neighbor routers that should be sent RIP messages
+rip advertise-to 10.1.0.1
+
+rip periodic-update-rate 5000
+rip route-timeout-threshold 12000
+
+tcp rto-min 250
+tcp rto-max 3000
+";
+        let mut ip_config = IPConfig::default();
+        ip_config.parse(config_str).unwrap();
+
+        // These fields were added in F24
+        assert_eq!(ip_config.rip_periodic_update_rate, Some(5000));
+        assert_eq!(ip_config.rip_timeout_threshold, Some(12000));
+        assert_eq!(ip_config.tcp_rto_min, Some(250));
+        assert_eq!(ip_config.tcp_rto_max, Some(3000));
+    }
 
     #[test]
     fn test_str_to_udp() {
