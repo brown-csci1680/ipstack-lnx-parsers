@@ -26,5 +26,5 @@ func main() {
 		fmt.Printf("%s has IP %s\n", iface.Name, prefixForm.String())
 	}
 
-	fmt.Printf("%+v", lnxConfig)
+	fmt.Printf("\n\nFull config:  %+v\n", lnxConfig)
 }

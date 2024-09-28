@@ -34,8 +34,6 @@ type IPConfig struct {
 	Interfaces []InterfaceConfig
 	Neighbors  []NeighborConfig
 
-	OriginatingPrefixes []netip.Prefix // Unused in F23, ignore.
-
 	RoutingMode RoutingMode
 
 	// ROUTERS ONLY:  Neighbors to send RIP packets
@@ -44,13 +42,15 @@ type IPConfig struct {
 	// Manually-added routes ("route" directive, usually just for default on hosts)
 	StaticRoutes map[netip.Prefix]netip.Addr
 
-	// ROUTERS ONLY:  Timing parameters for RIP updates (in milliseconds)
-	RipPeriodicUpdateRate uint
-	RipTimeoutThreshold   uint
+	OriginatingPrefixes []netip.Prefix // Unused, ignore.
 
-	// HOSTS ONLY:  Timing parameters for TCP (in milliseconds)
-	TcpRtoMin uint
-	TcpRtoMax uint
+	// ROUTERS ONLY:  Timing parameters for RIP updates (in milliseconds)
+	RipPeriodicUpdateRate uint // in milliseconds
+	RipTimeoutThreshold   uint // in milliseconds
+
+	// HOSTS ONLY:  Timing parameters for TCP (in microseconds)
+	TcpRtoMin uint // in microseconds
+	TcpRtoMax uint // in microseconds
 }
 
 type InterfaceConfig struct {
@@ -124,7 +124,7 @@ var parseCommands = map[string]ParseFunc{
 }
 
 func parseRip(ln int, line string, config *IPConfig) error {
-	tokens := strings.Split(line, " ")
+	tokens := strings.Fields(line)
 
 	if len(tokens) < 2 {
 		return newErrString(ln, "Usage:  rip [cmd] ...")
@@ -208,7 +208,7 @@ func addRipNeighbor(config *IPConfig, neighbor netip.Addr) error {
 }
 
 func parseTcp(ln int, line string, config *IPConfig) error {
-	tokens := strings.Split(line, " ")
+	tokens := strings.Fields(line)
 
 	if len(tokens) < 2 {
 		return newErrString(ln, "Usage:  tcp [cmd] ...")
@@ -219,7 +219,7 @@ func parseTcp(ln int, line string, config *IPConfig) error {
 	switch cmd {
 	case "rto-min":
 		if len(argTokens) < 1 {
-			return newErrString(ln, "Usage:  tcp rto-min <milliseconds>")
+			return newErrString(ln, "Usage:  tcp rto-min <microseconds>")
 		}
 		val, err := strconv.ParseInt(argTokens[0], 10, 64)
 		if err != nil {
@@ -228,7 +228,7 @@ func parseTcp(ln int, line string, config *IPConfig) error {
 		config.TcpRtoMin = uint(val)
 	case "rto-max":
 		if len(argTokens) < 1 {
-			return newErrString(ln, "Usage:  tcp rto-max <milliseconds>")
+			return newErrString(ln, "Usage:  tcp rto-max <microseconds>")
 		}
 		val, err := strconv.ParseInt(argTokens[0], 10, 64)
 		if err != nil {
@@ -243,7 +243,7 @@ func parseTcp(ln int, line string, config *IPConfig) error {
 }
 
 func parseRouting(ln int, line string, config *IPConfig) error {
-	tokens := strings.Split(line, " ")
+	tokens := strings.Fields(line)
 
 	if len(tokens) < 2 {
 		return newErrString(ln, "routing directive must have format:  routing <type>")
@@ -404,7 +404,7 @@ func ParseConfig(configFile string) (*IPConfig, error) {
 		ln++
 
 		line := scanner.Text()
-		tokens := strings.Split(line, " ")
+		tokens := strings.Fields(line)
 
 		if len(tokens) == 0 {
 			continue

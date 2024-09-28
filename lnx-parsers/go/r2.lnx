@@ -13,8 +13,10 @@ routing rip
 # Neighbor routers that should be sent RIP messages
 rip advertise-to 10.1.0.1
 
-rip periodic-update-rate 5000
-rip route-timeout-threshold 12000
+# Timing parameters for RIP
+rip periodic-update-rate    5000  # in milliseconds
+rip route-timeout-threshold 12000  # in milliseconds
 
-tcp rto-min 250
-tcp rto-max 3000
+# Timing parameters for TCP
+tcp rto-min 1000    # in microseconds
+tcp rto-max 3000000 # in microseconds
