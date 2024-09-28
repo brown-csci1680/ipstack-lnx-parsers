@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -44,13 +45,13 @@ type IPConfig struct {
 
 	OriginatingPrefixes []netip.Prefix // Unused, ignore.
 
-	// ROUTERS ONLY:  Timing parameters for RIP updates (in milliseconds)
-	RipPeriodicUpdateRate uint // in milliseconds
-	RipTimeoutThreshold   uint // in milliseconds
+	// ROUTERS ONLY:  Timing parameters for RIP updates
+	RipPeriodicUpdateRate time.Duration
+	RipTimeoutThreshold   time.Duration
 
-	// HOSTS ONLY:  Timing parameters for TCP (in microseconds)
-	TcpRtoMin uint // in microseconds
-	TcpRtoMax uint // in microseconds
+	// HOSTS ONLY:  Timing parameters for TCP
+	TcpRtoMin time.Duration
+	TcpRtoMax time.Duration
 }
 
 type InterfaceConfig struct {
@@ -98,15 +99,17 @@ var LnxConfig = IPConfig{
 		},
 	},
 
-	OriginatingPrefixes: []netip.Prefix{
-		netip.MustParsePrefix("10.1.0.1/24"),
-	},
-
 	RoutingMode: RoutingTypeStatic,
 
 	RipNeighbors: []netip.Addr{
 		netip.MustParseAddr("10.10.1.2"),
 	},
+
+	RipPeriodicUpdateRate: 5 * time.Second,
+	RipTimeoutThreshold:   12 * time.Second,
+
+	TcpRtoMin: 1 * time.Millisecond,
+	TcpRtoMax: 3 * time.Second,
 }
 
 // ******************** END PUBLIC INTERFACE *********************************************
@@ -168,7 +171,7 @@ func parseRip(ln int, line string, config *IPConfig) error {
 		if err != nil {
 			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
 		}
-		config.RipPeriodicUpdateRate = uint(val)
+		config.RipPeriodicUpdateRate = time.Duration(val) * time.Millisecond
 	case "route-timeout-threshold":
 		if len(ripTokens) < 1 {
 			return newErrString(ln, "Usage:  rip route-timeout-threshold <milliseconds>")
@@ -177,7 +180,7 @@ func parseRip(ln int, line string, config *IPConfig) error {
 		if err != nil {
 			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
 		}
-		config.RipTimeoutThreshold = uint(val)
+		config.RipTimeoutThreshold = time.Duration(val) * time.Millisecond
 	default:
 		return newErrString(ln, "Unrecognized RIP command %s", cmd)
 	}
@@ -225,7 +228,7 @@ func parseTcp(ln int, line string, config *IPConfig) error {
 		if err != nil {
 			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
 		}
-		config.TcpRtoMin = uint(val)
+		config.TcpRtoMin = time.Duration(val) * time.Microsecond
 	case "rto-max":
 		if len(argTokens) < 1 {
 			return newErrString(ln, "Usage:  tcp rto-max <microseconds>")
@@ -234,7 +237,7 @@ func parseTcp(ln int, line string, config *IPConfig) error {
 		if err != nil {
 			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
 		}
-		config.TcpRtoMax = uint(val)
+		config.TcpRtoMax = time.Duration(val) * time.Microsecond
 	default:
 		return newErrString(ln, "Unrecognized RIP command %s", cmd)
 	}
