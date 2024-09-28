@@ -66,6 +66,14 @@ int main(int argc, char **argv) {
 	print_rip_neighbor(rip_neighbor);
     } list_iterate_end();
 
+    printf("rip periodic-update-rate %lu # in milliseconds\n",
+	   config->rip_periodic_update_rate_ms);
+    printf("rip route-timeout-threshold %lu # in milliseconds\n",
+	config->rip_timeout_threshold_ms);
+
+    printf("tcp rto-min %lu # in microseconds\n", config->tcp_rto_min_us);
+    printf("tcp rto-max %lu # in microseconds\n", config->tcp_rto_max_us);
+
     lnxconfig_destroy(config);
 
     return 0;
