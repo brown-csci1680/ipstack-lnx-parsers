@@ -1,4 +1,8 @@
-# Auto-generated configuration for r2
+# EXAMPLE LNX CONFIGURATION FILE
+#
+# Note: This is an example file used for testing the parser
+# In a real config, not all directives will appear for
+# all nodes.
 
 interface if0 10.1.0.2/24 127.0.0.1:5003 # to network r1-r2
 neighbor 10.1.0.1 at 127.0.0.1:5002 via if0 # r1
@@ -14,9 +18,9 @@ routing rip
 rip advertise-to 10.1.0.1
 
 # Timing parameters for RIP
-rip periodic-update-rate    5000  # in milliseconds
-rip route-timeout-threshold 12000  # in milliseconds
+rip periodic-update-rate 5000 # in milliseconds
+rip route-timeout-threshold 12000 # in milliseconds
 
-# Timing parameters for TCP
-tcp rto-min 1000    # in microseconds
-tcp rto-max 3000000 # in microseconds
+# Example timing parameters for TCP
+tcp rto-min 1000 # in microseconds
+tcp rto-max 5000000 # in microseconds
