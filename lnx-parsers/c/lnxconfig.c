@@ -223,7 +223,7 @@ lnxconfig_t *lnxconfig_parse(char *config_file) {
 		    do_parse_error("Did not find enough tokens");
 		}
 	    } else {
-		do_parse_error("Unrecognized RIP directive");
+		do_parse_error("Unrecognized TCP directive");
 	    }
 	}
 
