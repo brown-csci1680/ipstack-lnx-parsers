@@ -10,12 +10,15 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <string>
 #include <vector>
 #include <fstream>
+#include <limits.h>
+#include <stdint.h>
 
 namespace lnx {
 
@@ -135,31 +138,52 @@ namespace lnx {
 	};
 
 	class Config {
-		public:
-			Config(char *path_to_lnx_file);
+	public:
+	    Config(char *path_to_lnx_file);
 
-			const RoutingMode &routing_mode() { return m_routing_mode; }
-			const std::vector<Interface> &interfaces() { return m_interfaces; }
-			const std::vector<Neighbor> &neighbors() { return m_neighbors; }
-			const std::vector<RIPNeighbor> &rip_neighbors() { return m_rip_neighbors; }
-			const std::vector<StaticRoute> &static_routes() { return m_static_routes; }
+	    const RoutingMode &routing_mode() { return m_routing_mode; }
+	    const std::vector<Interface> &interfaces() { return m_interfaces; }
+	    const std::vector<Neighbor> &neighbors() { return m_neighbors; }
+	    const std::vector<RIPNeighbor> &rip_neighbors() { return m_rip_neighbors; }
+	    const std::vector<StaticRoute> &static_routes() { return m_static_routes; }
 
-		private:
-			RoutingMode m_routing_mode;
-			void do_parse_error(std::string msg, int lineno);
-			void parse_addr(char *ip_str, in_addr *addr, int lineno);
-			std::vector<Interface> m_interfaces;
-			std::vector<Neighbor> m_neighbors;
-			std::vector<RIPNeighbor> m_rip_neighbors;
-			std::vector<StaticRoute> m_static_routes;
+	    const uint64_t rip_periodic_update_rate() { return m_rip_periodic_update_rate_ms; }
+	    const uint64_t rip_timeout_threshold() { return m_rip_timeout_threshold_ms; }
+	    const uint64_t tcp_rto_min() { return m_tcp_rto_min_us; }
+	    const uint64_t tcp_rto_max() { return m_tcp_rto_max_us; }
+
+	private:
+	    RoutingMode m_routing_mode;
+	    void do_parse_error(std::string msg, int lineno);
+	    void parse_addr(char *ip_str, in_addr *addr, int lineno);
+	    std::vector<Interface> m_interfaces;
+	    std::vector<Neighbor> m_neighbors;
+	    std::vector<RIPNeighbor> m_rip_neighbors;
+	    std::vector<StaticRoute> m_static_routes;
+
+	    // RIP timing parameters (routers only)
+	    uint64_t m_rip_periodic_update_rate_ms;
+	    uint64_t m_rip_timeout_threshold_ms;
+
+	    // TCP timing parameters (hosts only)
+	    uint64_t m_tcp_rto_min_us;
+	    uint64_t m_tcp_rto_max_us;
 	};
 }
+
+
+#define DEFAULT_RIP_PERIODIC_UPDATE_RATE_MS 5000
+#define DEFAULT_RIP_TIMEOUT_THRESHOLD_MS 12000
+#define DEFAULT_TCP_RTO_MIN_US 1000
+#define DEFAULT_TCP_RTO_MAX_US 5000000
 
 #define TOKEN_MAX_INTERFACE 5
 #define TOKEN_MAX_NEIGHBOR 4
 #define TOKEN_MAX_RIP_NEIGHBOR 1
 #define TOKEN_MAX_ROUTE 3
-#define TOKEN_MAX_NAME 16
+#define TOKEN_MAX_NAME 64
+#define TOKEN_MAX_NUMBER 1
+
 #define LNX_IFNAME_MAX 64
 
 lnx::Config::Config(char *path_to_lnx_file) {
@@ -168,6 +192,13 @@ lnx::Config::Config(char *path_to_lnx_file) {
 		std::perror("Failed to open file");
 		std::exit(1);
 	}
+
+	// Set default constants
+	m_routing_mode = RoutingMode::STATIC;
+	m_rip_periodic_update_rate_ms = DEFAULT_RIP_PERIODIC_UPDATE_RATE_MS;
+	m_rip_timeout_threshold_ms = DEFAULT_RIP_TIMEOUT_THRESHOLD_MS;
+	m_tcp_rto_min_us = DEFAULT_TCP_RTO_MIN_US;
+	m_tcp_rto_max_us = DEFAULT_TCP_RTO_MAX_US;
 
 	std::string line;
 	int tokens;
@@ -228,13 +259,36 @@ lnx::Config::Config(char *path_to_lnx_file) {
 				do_parse_error("Unrecognized routing mode", lineno);
 			}
 		} else if (strncmp(first_token, "rip", TOKEN_MAX_NAME) == 0) {
-			RIPNeighbor r;
-			tokens = sscanf(line.c_str(), "rip advertise-to %32s", ip_buf1);
-			if (tokens != TOKEN_MAX_RIP_NEIGHBOR) {
-				do_parse_error("Did not find enough tokens", lineno);
+			char second_token[TOKEN_MAX_NAME];
+			memset(second_token, 0, TOKEN_MAX_NAME);
+
+			if ((tokens = sscanf(line.c_str(), "rip %32s", second_token)) != 1) {
+			    do_parse_error("Did not find enough tokens", lineno);
 			}
-			parse_addr(ip_buf1, &r.dest, lineno);
-			m_rip_neighbors.push_back(r);
+
+			if (strncmp(second_token, "periodic-update-rate", TOKEN_MAX_NAME) == 0) {
+			    tokens = sscanf(line.c_str(), "rip periodic-update-rate %lu",
+					    &m_rip_periodic_update_rate_ms);
+			    if (tokens != TOKEN_MAX_NUMBER) {
+				do_parse_error("Did not find enough tokens", lineno);
+			    }
+			} else if (strncmp(second_token, "route-timeout-threshold", TOKEN_MAX_NAME) == 0) {
+			    tokens = sscanf(line.c_str(), "rip route-timeout-threshold %lu",
+					    &m_rip_timeout_threshold_ms);
+			    if (tokens != TOKEN_MAX_NUMBER) {
+				do_parse_error("Did not find enough tokens", lineno);
+			    }
+			} else if (strncmp(second_token, "advertise-to", TOKEN_MAX_NAME) == 0) {
+			    tokens = sscanf(line.c_str(), "rip advertise-to %32s", ip_buf1);
+			    if (tokens != TOKEN_MAX_RIP_NEIGHBOR) {
+				do_parse_error("Did not find enough tokens", lineno);
+			    }
+			    RIPNeighbor r;
+			    parse_addr(ip_buf1, &r.dest, lineno);
+			    m_rip_neighbors.push_back(r);
+			} else {
+			    do_parse_error("Unexpected RIP directive", lineno);
+			}
 		} else if (strncmp(first_token, "route", TOKEN_MAX_NAME) == 0) {
 			StaticRoute s;
 			tokens = sscanf(line.c_str(), "route %32[^/]/%2d via %32s",
@@ -245,6 +299,29 @@ lnx::Config::Config(char *path_to_lnx_file) {
 			parse_addr(ip_buf1, &s.network_addr, lineno);
 			parse_addr(ip_buf2, &s.next_hop, lineno);
 			m_static_routes.push_back(s);
+		} else if (strncmp(first_token, "tcp", TOKEN_MAX_NAME) == 0) {
+		    char second_token[TOKEN_MAX_NAME];
+		    memset(second_token, 0, TOKEN_MAX_NAME);
+
+		    if ((tokens = sscanf(line.c_str(), "tcp %32s", second_token)) != 1) {
+			do_parse_error("Did not find enough tokens", lineno);
+		    }
+
+		    if (strncmp(second_token, "rto-min", TOKEN_MAX_NAME) == 0) {
+			tokens = sscanf(line.c_str(), "tcp rto-min %lu",
+					&m_tcp_rto_min_us);
+			if (tokens != TOKEN_MAX_NUMBER) {
+			    do_parse_error("Did not find enough tokens", lineno);
+			}
+		    } else if (strncmp(second_token, "rto-max", TOKEN_MAX_NAME) == 0) {
+			tokens = sscanf(line.c_str(), "tcp rto-max %lu",
+					&m_tcp_rto_max_us);
+			if (tokens != TOKEN_MAX_NUMBER) {
+			    do_parse_error("Did not find enough tokens", lineno);
+			}
+		    } else {
+			do_parse_error("Unrecognized TCP directive", lineno);
+		    }
 		}
 
 	}

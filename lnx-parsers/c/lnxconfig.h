@@ -12,6 +12,7 @@
 #define __LNXCONFIG_H__
 
 #include <stddef.h>
+#include <stdint.h>
 #include <netinet/if_ether.h>
 #include <netinet/in.h>
 
@@ -77,6 +78,14 @@ typedef struct {
     list_t static_routes; // list of type lnx_static_route_t
 
     routing_mode_t routing_mode;
+
+    // RIP timing parameters (routers only)
+    uint64_t rip_periodic_update_rate_ms; // in milliseconds
+    uint64_t rip_timeout_threshold_ms; // in milliseconds
+
+    // TCP timing parameters (hosts only)
+    uint64_t tcp_rto_min_us; // in microseconds
+    uint64_t tcp_rto_max_us; // in microseconds
 } lnxconfig_t;
 
 // Parse the config

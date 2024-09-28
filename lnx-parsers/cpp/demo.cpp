@@ -19,6 +19,15 @@ int main(int argc, char **argv) {
 	std::cout << "routing " << (conf.routing_mode() == lnx::RoutingMode::RIP ? "rip" : "static") << std::endl;
 	for (auto &s : conf.static_routes()) print_static_route(s);
 	for (auto &r : conf.rip_neighbors()) print_rip_neighbor(r);
+	std::cout << "rip periodic-update-rate "
+		  << conf.rip_periodic_update_rate() << " # in milliseconds" << std::endl;
+	std::cout << "rip route-timeout-threshold "
+		  << conf.rip_timeout_threshold() << " # in millisecons" << std::endl;
+
+	std::cout << "tcp rto-min "
+		  << conf.tcp_rto_min() << " # in microseconds" << std::endl;
+	std::cout << "tcp rto-max "
+		  << conf.tcp_rto_max() << " # in microseconds" << std::endl;
 }
 
 std::string addr_to_str(const in_addr *addr) {

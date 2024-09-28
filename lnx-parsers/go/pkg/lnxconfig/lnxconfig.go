@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -33,8 +35,6 @@ type IPConfig struct {
 	Interfaces []InterfaceConfig
 	Neighbors  []NeighborConfig
 
-	OriginatingPrefixes []netip.Prefix // Unused in F23, ignore.
-
 	RoutingMode RoutingMode
 
 	// ROUTERS ONLY:  Neighbors to send RIP packets
@@ -42,6 +42,16 @@ type IPConfig struct {
 
 	// Manually-added routes ("route" directive, usually just for default on hosts)
 	StaticRoutes map[netip.Prefix]netip.Addr
+
+	OriginatingPrefixes []netip.Prefix // Unused, ignore.
+
+	// ROUTERS ONLY:  Timing parameters for RIP updates
+	RipPeriodicUpdateRate time.Duration
+	RipTimeoutThreshold   time.Duration
+
+	// HOSTS ONLY:  Timing parameters for TCP
+	TcpRtoMin time.Duration
+	TcpRtoMax time.Duration
 }
 
 type InterfaceConfig struct {
@@ -89,15 +99,17 @@ var LnxConfig = IPConfig{
 		},
 	},
 
-	OriginatingPrefixes: []netip.Prefix{
-		netip.MustParsePrefix("10.1.0.1/24"),
-	},
-
 	RoutingMode: RoutingTypeStatic,
 
 	RipNeighbors: []netip.Addr{
 		netip.MustParseAddr("10.10.1.2"),
 	},
+
+	RipPeriodicUpdateRate: 5 * time.Second,
+	RipTimeoutThreshold:   12 * time.Second,
+
+	TcpRtoMin: 1 * time.Millisecond,
+	TcpRtoMax: 5 * time.Second,
 }
 
 // ******************** END PUBLIC INTERFACE *********************************************
@@ -111,10 +123,11 @@ var parseCommands = map[string]ParseFunc{
 	"routing":   parseRouting,
 	"route":     parseRoute,
 	"rip":       parseRip,
+	"tcp":       parseTcp,
 }
 
 func parseRip(ln int, line string, config *IPConfig) error {
-	tokens := strings.Split(line, " ")
+	tokens := strings.Fields(line)
 
 	if len(tokens) < 2 {
 		return newErrString(ln, "Usage:  rip [cmd] ...")
@@ -150,6 +163,24 @@ func parseRip(ln int, line string, config *IPConfig) error {
 		if err != nil {
 			return err
 		}
+	case "periodic-update-rate":
+		if len(ripTokens) < 1 {
+			return newErrString(ln, "Usage:  rip periodic-update-rate <milliseconds>")
+		}
+		val, err := strconv.ParseInt(ripTokens[0], 10, 64)
+		if err != nil {
+			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
+		}
+		config.RipPeriodicUpdateRate = time.Duration(val) * time.Millisecond
+	case "route-timeout-threshold":
+		if len(ripTokens) < 1 {
+			return newErrString(ln, "Usage:  rip route-timeout-threshold <milliseconds>")
+		}
+		val, err := strconv.ParseInt(ripTokens[0], 10, 64)
+		if err != nil {
+			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
+		}
+		config.RipTimeoutThreshold = time.Duration(val) * time.Millisecond
 	default:
 		return newErrString(ln, "Unrecognized RIP command %s", cmd)
 	}
@@ -179,8 +210,43 @@ func addRipNeighbor(config *IPConfig, neighbor netip.Addr) error {
 	return errors.Errorf("RIP neighbor %s is not a neighbor IP", neighbor.String())
 }
 
+func parseTcp(ln int, line string, config *IPConfig) error {
+	tokens := strings.Fields(line)
+
+	if len(tokens) < 2 {
+		return newErrString(ln, "Usage:  tcp [cmd] ...")
+	}
+	cmd := tokens[1]
+	argTokens := tokens[2:]
+
+	switch cmd {
+	case "rto-min":
+		if len(argTokens) < 1 {
+			return newErrString(ln, "Usage:  tcp rto-min <microseconds>")
+		}
+		val, err := strconv.ParseInt(argTokens[0], 10, 64)
+		if err != nil {
+			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
+		}
+		config.TcpRtoMin = time.Duration(val) * time.Microsecond
+	case "rto-max":
+		if len(argTokens) < 1 {
+			return newErrString(ln, "Usage:  tcp rto-max <microseconds>")
+		}
+		val, err := strconv.ParseInt(argTokens[0], 10, 64)
+		if err != nil {
+			return newErrString(ln, fmt.Sprintf("Error parsing integer value: %s", err))
+		}
+		config.TcpRtoMax = time.Duration(val) * time.Microsecond
+	default:
+		return newErrString(ln, "Unrecognized RIP command %s", cmd)
+	}
+
+	return nil
+}
+
 func parseRouting(ln int, line string, config *IPConfig) error {
-	tokens := strings.Split(line, " ")
+	tokens := strings.Fields(line)
 
 	if len(tokens) < 2 {
 		return newErrString(ln, "routing directive must have format:  routing <type>")
@@ -327,12 +393,18 @@ func ParseConfig(configFile string) (*IPConfig, error) {
 	defer fd.Close()
 
 	config := &IPConfig{
-		Interfaces:          make([]InterfaceConfig, 0, 1),
-		Neighbors:           make([]NeighborConfig, 0, 1),
+		Interfaces: make([]InterfaceConfig, 0, 1),
+		Neighbors:  make([]NeighborConfig, 0, 1),
+
+		RipNeighbors:        make([]netip.Addr, 0),
+		StaticRoutes:        make(map[netip.Prefix]netip.Addr, 0),
 		OriginatingPrefixes: make([]netip.Prefix, 0, 1),
 
-		RipNeighbors: make([]netip.Addr, 0),
-		StaticRoutes: make(map[netip.Prefix]netip.Addr, 0),
+		RipPeriodicUpdateRate: 5 * time.Second,
+		RipTimeoutThreshold:   12 * time.Second,
+
+		TcpRtoMin: 1 * time.Millisecond,
+		TcpRtoMax: 5 * time.Second,
 	}
 
 	scanner := bufio.NewScanner(fd)
@@ -341,7 +413,7 @@ func ParseConfig(configFile string) (*IPConfig, error) {
 		ln++
 
 		line := scanner.Text()
-		tokens := strings.Split(line, " ")
+		tokens := strings.Fields(line)
 
 		if len(tokens) == 0 {
 			continue
